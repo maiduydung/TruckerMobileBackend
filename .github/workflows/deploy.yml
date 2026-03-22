@@ -1,0 +1,73 @@
+name: Deploy Trucker API Function App
+
+on:
+  push:
+    branches:
+      - TruckerMobileBackend
+  workflow_dispatch:
+
+permissions:
+  id-token: write
+  contents: read
+
+env:
+  AZURE_FUNCTIONAPP_NAME: "nhutin-trucker-api"
+  AZURE_FUNCTIONAPP_PACKAGE_PATH: "."
+  PYTHON_VERSION: "3.11"
+  EXPECTED_FUNCTION_NAME: "NhuTin Trucker API"
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install Azure Functions Core Tools
+        run: |
+          python --version
+          npm install -g azure-functions-core-tools@4 --unsafe-perm true
+
+      - name: Login to Azure with OIDC
+        uses: azure/login@v1
+        with:
+          client-id: ${{ secrets.AZURE_DUNG_GH_DEPLOYER_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_DUNG_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Deploy to Azure Function App (Flex Consumption)
+        run: |
+          func azure functionapp publish ${{ env.AZURE_FUNCTIONAPP_NAME }} --python
+
+      - name: Wait for deployment to stabilize
+        run: sleep 30
+
+      - name: Post-deploy verification
+        run: |
+          HEALTH_URL="https://${{ env.AZURE_FUNCTIONAPP_NAME }}.azurewebsites.net/api/health"
+          echo "Checking: $HEALTH_URL"
+
+          for i in {1..5}; do
+            echo "Attempt $i/5..."
+            RESPONSE=$(curl -s "$HEALTH_URL" || echo '{"service":"CURL_FAILED"}')
+            echo "Response: $RESPONSE"
+
+            SERVICE=$(echo "$RESPONSE" | jq -r '.service // "UNKNOWN"')
+
+            if [[ "$SERVICE" == "${{ env.EXPECTED_FUNCTION_NAME }}" ]]; then
+              echo "Deployment verified!"
+              exit 0
+            else
+              echo "Not ready yet, retrying in 10s..."
+              sleep 10
+            fi
+          done
+
+          echo "Health check failed after 5 attempts"
+          exit 1
