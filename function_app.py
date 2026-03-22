@@ -4,33 +4,67 @@ import json
 import datetime
 import traceback
 import uuid
-from azure.cosmos import CosmosClient, PartitionKey
+import psycopg2
+from psycopg2.extras import RealDictCursor
 
-from config import (
-    COSMOS_ENDPOINT,
-    COSMOS_KEY,
-    COSMOS_DATABASE,
-    COSMOS_CONTAINER_TRIPS,
-)
+from config import PG_HOST, PG_PORT, PG_DATABASE, PG_USER, PG_PASSWORD, PG_SSLMODE
 
 app = func.FunctionApp()
 logger = logging.getLogger(__name__)
 
-# ── Cosmos DB setup ──────────────────────────────────────────────────────
+# ── PostgreSQL ───────────────────────────────────────────────────────────
 
-_container = None
+def get_conn():
+    return psycopg2.connect(
+        host=PG_HOST,
+        port=PG_PORT,
+        dbname=PG_DATABASE,
+        user=PG_USER,
+        password=PG_PASSWORD,
+        sslmode=PG_SSLMODE,
+    )
 
 
-def get_container():
-    global _container
-    if _container is None:
-        client = CosmosClient(COSMOS_ENDPOINT, COSMOS_KEY)
-        db = client.create_database_if_not_exists(COSMOS_DATABASE)
-        _container = db.create_container_if_not_exists(
-            id=COSMOS_CONTAINER_TRIPS,
-            partition_key=PartitionKey(path="/driverName"),
-        )
-    return _container
+def init_db():
+    """Create trips table if it doesn't exist."""
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS trips (
+                    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                    driver_name TEXT NOT NULL,
+                    advance_payment INTEGER DEFAULT 0,
+
+                    pickup_date TIMESTAMPTZ,
+                    pickup_location TEXT,
+                    pickup_weight_kg INTEGER DEFAULT 0,
+                    pickup_gps JSONB,
+
+                    delivery_date TIMESTAMPTZ,
+                    delivery_location TEXT,
+                    delivery_weight_kg INTEGER DEFAULT 0,
+                    delivery_gps JSONB,
+
+                    fuel_nam_phat_vnd INTEGER DEFAULT 0,
+                    fuel_hn_liters INTEGER DEFAULT 0,
+                    loading_fee_vnd INTEGER DEFAULT 0,
+                    additional_costs JSONB DEFAULT '[]',
+
+                    notes TEXT DEFAULT '',
+                    is_draft BOOLEAN DEFAULT FALSE,
+                    submitted_at TIMESTAMPTZ,
+                    received_at TIMESTAMPTZ DEFAULT NOW()
+                );
+            """)
+        conn.commit()
+
+
+# Init on cold start
+try:
+    init_db()
+    logger.info("DB initialized")
+except Exception:
+    logger.warning(f"DB init skipped (will retry on first request): {traceback.format_exc()}")
 
 
 # ── POST /api/trips ──────────────────────────────────────────────────────
@@ -43,19 +77,51 @@ def submit_trip(req: func.HttpRequest) -> func.HttpResponse:
         if not body:
             return _json_response({"error": "Request body required"}, 400)
 
-        # Add server-side metadata
-        body["id"] = str(uuid.uuid4())
-        body["receivedAt"] = datetime.datetime.utcnow().isoformat() + "Z"
+        trip_id = str(uuid.uuid4())
 
-        # Write to Cosmos
-        container = get_container()
-        container.upsert_item(body)
+        with get_conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute("""
+                    INSERT INTO trips (
+                        id, driver_name, advance_payment,
+                        pickup_date, pickup_location, pickup_weight_kg, pickup_gps,
+                        delivery_date, delivery_location, delivery_weight_kg, delivery_gps,
+                        fuel_nam_phat_vnd, fuel_hn_liters, loading_fee_vnd, additional_costs,
+                        notes, is_draft, submitted_at
+                    ) VALUES (
+                        %s, %s, %s,
+                        %s, %s, %s, %s,
+                        %s, %s, %s, %s,
+                        %s, %s, %s, %s,
+                        %s, %s, %s
+                    )
+                """, (
+                    trip_id,
+                    body.get("driverName", ""),
+                    body.get("advancePayment", 0),
+                    body.get("pickupDate"),
+                    body.get("pickupLocation", ""),
+                    body.get("pickupWeightKg", 0),
+                    json.dumps(body.get("pickupGps")),
+                    body.get("deliveryDate"),
+                    body.get("deliveryLocation", ""),
+                    body.get("deliveryWeightKg", 0),
+                    json.dumps(body.get("deliveryGps")),
+                    body.get("fuelNamPhatVnd", 0),
+                    body.get("fuelHnLiters", 0),
+                    body.get("loadingFeeVnd", 0),
+                    json.dumps(body.get("additionalCosts", [])),
+                    body.get("notes", ""),
+                    body.get("isDraft", False),
+                    body.get("submittedAt"),
+                ))
+            conn.commit()
 
-        logger.info(f"Trip saved: {body['id']} | driver={body.get('driverName')} | isDraft={body.get('isDraft')}")
+        logger.info(f"Trip saved: {trip_id} | driver={body.get('driverName')} | isDraft={body.get('isDraft')}")
 
         return _json_response({
             "status": "ok",
-            "tripId": body["id"],
+            "tripId": trip_id,
             "isDraft": body.get("isDraft", False),
         }, 201)
 
@@ -72,9 +138,6 @@ def submit_trip(req: func.HttpRequest) -> func.HttpResponse:
 @app.route(route="trips", methods=["GET"], auth_level=func.AuthLevel.ANONYMOUS)
 def get_trips(req: func.HttpRequest) -> func.HttpResponse:
     try:
-        container = get_container()
-
-        # Optional filters
         driver = req.params.get("driver")
         include_drafts = req.params.get("includeDrafts", "false").lower() == "true"
 
@@ -82,18 +145,21 @@ def get_trips(req: func.HttpRequest) -> func.HttpResponse:
         params = []
 
         if not include_drafts:
-            conditions.append("c.isDraft = false")
+            conditions.append("is_draft = FALSE")
 
         if driver:
-            conditions.append("c.driverName = @driver")
-            params.append({"name": "@driver", "value": driver})
+            conditions.append("driver_name = %s")
+            params.append(driver)
 
         where = f" WHERE {' AND '.join(conditions)}" if conditions else ""
-        query = f"SELECT * FROM c{where} ORDER BY c.submittedAt DESC"
+        query = f"SELECT * FROM trips{where} ORDER BY submitted_at DESC"
 
-        items = list(container.query_items(query=query, parameters=params, enable_cross_partition_query=True))
+        with get_conn() as conn:
+            with conn.cursor(cursor_factory=RealDictCursor) as cur:
+                cur.execute(query, params)
+                rows = cur.fetchall()
 
-        return _json_response({"trips": items, "count": len(items)})
+        return _json_response({"trips": rows, "count": len(rows)})
 
     except Exception:
         logger.error(f"Error fetching trips: {traceback.format_exc()}")

@@ -14,8 +14,10 @@ def get_config(key, default=None):
     return local_settings.get(key) or os.getenv(key) or default
 
 
-# Cosmos DB
-COSMOS_ENDPOINT = get_config("COSMOS_ENDPOINT")
-COSMOS_KEY = get_config("COSMOS_KEY")
-COSMOS_DATABASE = get_config("COSMOS_DATABASE", "NhuTinTrucker")
-COSMOS_CONTAINER_TRIPS = get_config("COSMOS_CONTAINER_TRIPS", "Trips")
+# PostgreSQL
+PG_HOST = get_config("PG_HOST")
+PG_PORT = get_config("PG_PORT", "5432")
+PG_DATABASE = get_config("PG_DATABASE", "nhutin")
+PG_USER = get_config("PG_USER")
+PG_PASSWORD = get_config("PG_PASSWORD")
+PG_SSLMODE = get_config("PG_SSLMODE", "require")
