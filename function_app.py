@@ -178,11 +178,37 @@ def health(req: func.HttpRequest) -> func.HttpResponse:
     })
 
 
+# ── CORS preflight ───────────────────────────────────────────────────────
+
+@app.function_name(name="cors_preflight")
+@app.route(route="{*path}", methods=["OPTIONS"], auth_level=func.AuthLevel.ANONYMOUS)
+def cors_preflight(req: func.HttpRequest) -> func.HttpResponse:
+    return func.HttpResponse(status_code=204, headers=_cors_headers())
+
+
 # ── Helpers ──────────────────────────────────────────────────────────────
+
+ALLOWED_ORIGINS = {
+    "http://localhost:8081",
+    "http://localhost:19006",
+    "http://localhost:3000",
+}
+
+
+def _cors_headers(origin: str = "*") -> dict:
+    return {
+        "Access-Control-Allow-Origin": origin if origin in ALLOWED_ORIGINS else "*",
+        "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+        "Access-Control-Allow-Headers": "Content-Type",
+    }
+
 
 def _json_response(body: dict, status_code: int = 200) -> func.HttpResponse:
     return func.HttpResponse(
         json.dumps(body, default=str),
         status_code=status_code,
-        headers={"Content-Type": "application/json"},
+        headers={
+            "Content-Type": "application/json",
+            **_cors_headers(),
+        },
     )
