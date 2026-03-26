@@ -132,6 +132,97 @@ def submit_trip(req: func.HttpRequest) -> func.HttpResponse:
         return _json_response({"error": "Internal server error"}, 500)
 
 
+# ── PUT /api/trips/{id} ─────────────────────────────────────────────────
+
+EDIT_WINDOW_DAYS = 2
+
+@app.function_name(name="update_trip")
+@app.route(route="trips/{trip_id}", methods=["PUT"], auth_level=func.AuthLevel.ANONYMOUS)
+def update_trip(req: func.HttpRequest) -> func.HttpResponse:
+    try:
+        trip_id = req.route_params.get("trip_id")
+        body = req.get_json()
+        if not body:
+            return _json_response({"error": "Request body required"}, 400)
+
+        with get_conn() as conn:
+            with conn.cursor(cursor_factory=RealDictCursor) as cur:
+                # Check trip exists and is within edit window
+                cur.execute("SELECT id, submitted_at FROM trips WHERE id = %s", (trip_id,))
+                trip = cur.fetchone()
+                if not trip:
+                    return _json_response({"error": "Trip not found"}, 404)
+
+                cutoff = datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(days=EDIT_WINDOW_DAYS)
+                if trip["submitted_at"] and trip["submitted_at"] < cutoff:
+                    return _json_response({"error": "Trip is older than 2 days and cannot be edited"}, 403)
+
+                cur.execute("""
+                    UPDATE trips SET
+                        driver_name = %s, advance_payment = %s,
+                        pickup_date = %s, pickup_location = %s, pickup_weight_kg = %s, pickup_gps = %s,
+                        delivery_date = %s, delivery_location = %s, delivery_weight_kg = %s, delivery_gps = %s,
+                        fuel_nam_phat_vnd = %s, fuel_hn_liters = %s, loading_fee_vnd = %s, additional_costs = %s,
+                        notes = %s, is_draft = %s, submitted_at = %s
+                    WHERE id = %s
+                """, (
+                    body.get("driverName", ""),
+                    body.get("advancePayment", 0),
+                    body.get("pickupDate"),
+                    body.get("pickupLocation", ""),
+                    body.get("pickupWeightKg", 0),
+                    json.dumps(body.get("pickupGps")),
+                    body.get("deliveryDate"),
+                    body.get("deliveryLocation", ""),
+                    body.get("deliveryWeightKg", 0),
+                    json.dumps(body.get("deliveryGps")),
+                    body.get("fuelNamPhatVnd", 0),
+                    body.get("fuelHnLiters", 0),
+                    body.get("loadingFeeVnd", 0),
+                    json.dumps(body.get("additionalCosts", [])),
+                    body.get("notes", ""),
+                    body.get("isDraft", False),
+                    body.get("submittedAt"),
+                    trip_id,
+                ))
+            conn.commit()
+
+        logger.info(f"Trip updated: {trip_id} | driver={body.get('driverName')}")
+        return _json_response({"status": "ok", "tripId": trip_id})
+
+    except json.JSONDecodeError:
+        return _json_response({"error": "Invalid JSON"}, 400)
+    except Exception:
+        logger.error(f"Error updating trip: {traceback.format_exc()}")
+        return _json_response({"error": "Internal server error"}, 500)
+
+
+# ── DELETE /api/trips/{id} ───────────────────────────────────────────────
+
+@app.function_name(name="delete_trip")
+@app.route(route="trips/{trip_id}", methods=["DELETE"], auth_level=func.AuthLevel.ANONYMOUS)
+def delete_trip(req: func.HttpRequest) -> func.HttpResponse:
+    try:
+        trip_id = req.route_params.get("trip_id")
+
+        with get_conn() as conn:
+            with conn.cursor(cursor_factory=RealDictCursor) as cur:
+                cur.execute("SELECT id, is_draft FROM trips WHERE id = %s", (trip_id,))
+                trip = cur.fetchone()
+                if not trip:
+                    return _json_response({"error": "Trip not found"}, 404)
+
+                cur.execute("DELETE FROM trips WHERE id = %s", (trip_id,))
+            conn.commit()
+
+        logger.info(f"Trip deleted: {trip_id}")
+        return _json_response({"status": "ok", "tripId": trip_id})
+
+    except Exception:
+        logger.error(f"Error deleting trip: {traceback.format_exc()}")
+        return _json_response({"error": "Internal server error"}, 500)
+
+
 # ── GET /api/trips ───────────────────────────────────────────────────────
 
 @app.function_name(name="get_trips")
@@ -140,6 +231,7 @@ def get_trips(req: func.HttpRequest) -> func.HttpResponse:
     try:
         driver = req.params.get("driver")
         include_drafts = req.params.get("includeDrafts", "false").lower() == "true"
+        since_days = req.params.get("sinceDays")  # e.g., "2" for last 2 days
 
         conditions = []
         params = []
@@ -150,6 +242,15 @@ def get_trips(req: func.HttpRequest) -> func.HttpResponse:
         if driver:
             conditions.append("driver_name = %s")
             params.append(driver)
+
+        if since_days:
+            try:
+                days = int(since_days)
+                cutoff = datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(days=days)
+                conditions.append("submitted_at >= %s")
+                params.append(cutoff)
+            except ValueError:
+                pass
 
         where = f" WHERE {' AND '.join(conditions)}" if conditions else ""
         query = f"SELECT * FROM trips{where} ORDER BY submitted_at DESC"
@@ -198,7 +299,7 @@ ALLOWED_ORIGINS = {
 def _cors_headers(origin: str = "*") -> dict:
     return {
         "Access-Control-Allow-Origin": origin if origin in ALLOWED_ORIGINS else "*",
-        "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+        "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
         "Access-Control-Allow-Headers": "Content-Type",
     }
 
