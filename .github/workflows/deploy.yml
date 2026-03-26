@@ -3,7 +3,7 @@ name: Deploy Trucker API Function App
 on:
   push:
     branches:
-      - TruckerMobileBackend
+      - main
   workflow_dispatch:
 
 permissions:
@@ -49,8 +49,8 @@ jobs:
           echo "Branch: ${{ github.ref_name }}"
           echo "Target Function App: ${{ env.AZURE_FUNCTIONAPP_NAME }}"
 
-          if [[ "${{ github.ref_name }}" != "TruckerMobileBackend" ]]; then
-            echo "ERROR: This workflow should only run from TruckerMobileBackend branch!"
+          if [[ "${{ github.ref_name }}" != "main" ]]; then
+            echo "ERROR: This workflow should only run from main branch!"
             exit 1
           fi
 
