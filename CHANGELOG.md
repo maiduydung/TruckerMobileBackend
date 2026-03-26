@@ -2,6 +2,18 @@
 
 All notable changes to the NhuTin Trucker API.
 
+## [0.4.0] - 2026-03-27
+
+### Added
+- **Dashboard query endpoints** — `GET /api/dashboard/summary`, `GET /api/dashboard/trips`, `GET /api/dashboard/drivers` for the upcoming owner dashboard.
+- **`Database` class** (`services/database.py`) with query helpers, replacing raw `get_conn()` calls.
+- **`ResponseHelper` class** (`services/response.py`) with built-in CORS header handling.
+
+### Changed
+- **Refactored monolithic `function_app.py`** into `functions/` and `services/` modules — OOP style with docstrings, each file under 300 lines.
+- Trip CRUD endpoints moved to `functions/trips.py`.
+- Health check and CORS preflight moved to `functions/health.py`.
+
 ## [0.3.0] - 2026-03-26
 
 ### Added

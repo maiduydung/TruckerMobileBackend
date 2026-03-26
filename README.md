@@ -21,8 +21,8 @@ graph TB
 
     A -- "POST/PUT/DELETE /api/trips" --> B
     B -- "SQL" --> C
+    D -- "GET /api/dashboard/*" --> B
     D -- "GET /api/trips" --> B
-    D -. "Direct read" .-> C
 ```
 
 ## Trip Lifecycle
@@ -54,6 +54,9 @@ stateDiagram-v2
 | `PUT` | `/api/trips/{trip_id}` | Update existing trip (within 2-day window) | `200`, `400`, `403`, `404`, `500` |
 | `DELETE` | `/api/trips/{trip_id}` | Delete a trip | `200`, `404`, `500` |
 | `GET` | `/api/trips` | List trips with filters | `200`, `500` |
+| `GET` | `/api/dashboard/summary` | Aggregate stats (total trips, revenue, costs) | `200`, `500` |
+| `GET` | `/api/dashboard/trips` | Trip data for dashboard tables/charts | `200`, `500` |
+| `GET` | `/api/dashboard/drivers` | Per-driver stats and activity | `200`, `500` |
 | `GET` | `/api/health` | Health check | `200` |
 | `OPTIONS` | `/*` | CORS preflight | `204` |
 
@@ -141,8 +144,17 @@ erDiagram
 
 ```
 TruckerMobileBackend/
-├── function_app.py        # All API endpoints (single-file, ~315 lines)
+├── function_app.py        # Entry point — registers blueprints from functions/
 ├── config.py              # PostgreSQL connection config from env vars
+├── functions/             # Azure Function endpoints (one file per domain)
+│   ├── __init__.py
+│   ├── trips.py           # Trip CRUD: POST, PUT, DELETE, GET /api/trips
+│   ├── health.py          # GET /api/health + OPTIONS CORS preflight
+│   └── dashboard.py       # GET /api/dashboard/summary, /trips, /drivers
+├── services/              # Shared business logic and helpers
+│   ├── __init__.py
+│   ├── database.py        # Database class with query helpers (psycopg2)
+│   └── response.py        # ResponseHelper class with CORS headers
 ├── requirements.txt       # Python dependencies (3 packages)
 ├── host.json              # Azure Functions runtime config
 ├── Dockerfile             # Container deployment option
@@ -205,8 +217,8 @@ graph LR
 
 | Decision | Rationale |
 |----------|-----------|
-| Single `function_app.py` | < 320 lines total — splitting adds complexity without benefit at this scale |
-| No ORM | Direct psycopg2 with parameterized queries — fewer dependencies, full SQL control |
+| Modular `functions/` + `services/` | Refactored from single file once it exceeded 300 lines — each module stays under 300 lines with OOP and docstrings |
+| No ORM | Direct psycopg2 via `Database` helper class with parameterized queries — fewer dependencies, full SQL control |
 | PostgreSQL over Cosmos DB | Switched from Cosmos (commit `654c64c`) — relational queries needed, Burstable PG is 10x cheaper for this workload |
 | No auth layer | SME with 3 trusted drivers; API is behind Azure networking. Auth would add friction that kills adoption |
 | JSONB for additional_costs | Flexible schema for variable-length cost arrays without join tables |
