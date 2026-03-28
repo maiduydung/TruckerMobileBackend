@@ -64,6 +64,9 @@ class TripFunctions:
             body.get("fuelHnLiters", 0),
             body.get("loadingFeeVnd", 0),
             json.dumps(body.get("additionalCosts", [])),
+            body.get("openingBalance", 0),
+            body.get("totalCost", 0),
+            body.get("closingBalance", 0),
             body.get("notes", ""),
             body.get("isDraft", False),
             body.get("submittedAt"),
@@ -86,8 +89,9 @@ class TripFunctions:
                     pickup_date, pickup_location, pickup_weight_kg, pickup_gps,
                     delivery_date, delivery_location, delivery_weight_kg, delivery_gps,
                     fuel_nam_phat_vnd, fuel_hn_liters, loading_fee_vnd, additional_costs,
+                    opening_balance, total_cost, closing_balance,
                     notes, is_draft, submitted_at
-                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             """, [trip_id, *params])
 
             logger.info(f"Trip saved: {trip_id} | driver={body.get('driverName')} | isDraft={body.get('isDraft')}")
@@ -123,6 +127,7 @@ class TripFunctions:
                     pickup_date = %s, pickup_location = %s, pickup_weight_kg = %s, pickup_gps = %s,
                     delivery_date = %s, delivery_location = %s, delivery_weight_kg = %s, delivery_gps = %s,
                     fuel_nam_phat_vnd = %s, fuel_hn_liters = %s, loading_fee_vnd = %s, additional_costs = %s,
+                    opening_balance = %s, total_cost = %s, closing_balance = %s,
                     notes = %s, is_draft = %s, submitted_at = %s
                 WHERE id = %s
             """, [*params, trip_id])

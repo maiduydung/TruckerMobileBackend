@@ -51,12 +51,21 @@ class Database:
                         loading_fee_vnd INTEGER DEFAULT 0,
                         additional_costs JSONB DEFAULT '[]',
 
+                        opening_balance INTEGER DEFAULT 0,
+                        total_cost INTEGER DEFAULT 0,
+                        closing_balance INTEGER DEFAULT 0,
+
                         notes TEXT DEFAULT '',
                         is_draft BOOLEAN DEFAULT FALSE,
                         submitted_at TIMESTAMPTZ,
                         received_at TIMESTAMPTZ DEFAULT NOW()
                     );
                 """)
+                # Add new columns if they don't exist (safe for existing tables)
+                for col in ["opening_balance", "total_cost", "closing_balance"]:
+                    cur.execute(f"""
+                        ALTER TABLE trips ADD COLUMN IF NOT EXISTS {col} INTEGER DEFAULT 0;
+                    """)
             conn.commit()
         logger.info("DB schema verified")
 

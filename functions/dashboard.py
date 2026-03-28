@@ -111,7 +111,8 @@ class DashboardFunctions:
                     pickup_date, pickup_location, pickup_weight_kg,
                     delivery_date, delivery_location, delivery_weight_kg,
                     fuel_nam_phat_vnd, fuel_hn_liters, loading_fee_vnd,
-                    additional_costs, notes, is_draft, submitted_at
+                    additional_costs, opening_balance, total_cost, closing_balance,
+                    notes, is_draft, submitted_at
                 FROM trips{where}
                 ORDER BY submitted_at DESC
             """, params)
