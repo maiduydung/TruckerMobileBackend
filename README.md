@@ -15,8 +15,8 @@ graph TB
         C[(PostgreSQL<br/>Flexible Server)]
     end
 
-    subgraph "Future"
-        D[Owner Dashboard<br/>Gradio / Svelte]
+    subgraph "Owner Dashboard"
+        D[TruckerDashboard<br/>Svelte SPA]
     end
 
     A -- "POST/PUT/DELETE /api/trips" --> B
@@ -223,3 +223,8 @@ graph LR
 | No auth layer | SME with 3 trusted drivers; API is behind Azure networking. Auth would add friction that kills adoption |
 | JSONB for additional_costs | Flexible schema for variable-length cost arrays without join tables |
 | 2-day edit window | Balance between driver flexibility and data integrity for monthly accounting |
+
+## Related Repos
+
+- **[TruckerMobile](https://github.com/maiduydung/TruckerMobile)** — React Native/Expo mobile app for truck drivers
+- **[TruckerDashboard](https://github.com/maiduydung/TruckerDashboard)** — Svelte SPA for the business owner to view trips and export reports
