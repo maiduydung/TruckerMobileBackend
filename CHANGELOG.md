@@ -2,6 +2,11 @@
 
 All notable changes to the NhuTin Trucker API.
 
+## [0.4.1] - 2026-03-29
+
+### Added
+- **Test suite** (`tests/`) — pytest tests for `ResponseHelper` CORS logic, JSON responses, preflight handling, and origin allowlist validation (12 tests).
+
 ## [0.4.0] - 2026-03-27
 
 ### Added
