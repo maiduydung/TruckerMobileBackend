@@ -47,19 +47,39 @@ class TripFunctions:
             return TripFunctions._list(req)
 
     @staticmethod
+    def _build_stops(body: dict) -> list:
+        """Build stops array, with backward compat for old single-stop payloads."""
+        if "stops" in body and body["stops"]:
+            return body["stops"]
+
+        # Backward compat: old mobile app sends scalar pickup/delivery fields
+        stops = []
+        if body.get("pickupLocation") or body.get("pickupDate"):
+            stops.append({
+                "seq": 1, "type": "pickup",
+                "location": body.get("pickupLocation", ""),
+                "date": body.get("pickupDate"),
+                "weightKg": body.get("pickupWeightKg", 0),
+                "gps": body.get("pickupGps"),
+            })
+        if body.get("deliveryLocation") or body.get("deliveryDate"):
+            stops.append({
+                "seq": 2, "type": "delivery",
+                "location": body.get("deliveryLocation", ""),
+                "date": body.get("deliveryDate"),
+                "weightKg": body.get("deliveryWeightKg", 0),
+                "gps": body.get("deliveryGps"),
+            })
+        return stops
+
+    @staticmethod
     def _extract_trip_params(body: dict) -> tuple:
         """Extract trip fields from request body into a parameter tuple."""
+        stops = TripFunctions._build_stops(body)
         return (
             body.get("driverName", ""),
             body.get("advancePayment", 0),
-            body.get("pickupDate"),
-            body.get("pickupLocation", ""),
-            body.get("pickupWeightKg", 0),
-            json.dumps(body.get("pickupGps")),
-            body.get("deliveryDate"),
-            body.get("deliveryLocation", ""),
-            body.get("deliveryWeightKg", 0),
-            json.dumps(body.get("deliveryGps")),
+            json.dumps(stops),
             body.get("fuelNamPhatVnd", 0),
             body.get("fuelHnLiters", 0),
             body.get("loadingFeeVnd", 0),
@@ -85,13 +105,11 @@ class TripFunctions:
 
             Database.execute("""
                 INSERT INTO trips (
-                    id, driver_name, advance_payment,
-                    pickup_date, pickup_location, pickup_weight_kg, pickup_gps,
-                    delivery_date, delivery_location, delivery_weight_kg, delivery_gps,
+                    id, driver_name, advance_payment, stops,
                     fuel_nam_phat_vnd, fuel_hn_liters, loading_fee_vnd, additional_costs,
                     opening_balance, total_cost, closing_balance,
                     notes, is_draft, submitted_at
-                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             """, [trip_id, *params])
 
             logger.info(f"Trip saved: {trip_id} | driver={body.get('driverName')} | isDraft={body.get('isDraft')}")
@@ -123,9 +141,7 @@ class TripFunctions:
             params = TripFunctions._extract_trip_params(body)
             Database.execute("""
                 UPDATE trips SET
-                    driver_name = %s, advance_payment = %s,
-                    pickup_date = %s, pickup_location = %s, pickup_weight_kg = %s, pickup_gps = %s,
-                    delivery_date = %s, delivery_location = %s, delivery_weight_kg = %s, delivery_gps = %s,
+                    driver_name = %s, advance_payment = %s, stops = %s,
                     fuel_nam_phat_vnd = %s, fuel_hn_liters = %s, loading_fee_vnd = %s, additional_costs = %s,
                     opening_balance = %s, total_cost = %s, closing_balance = %s,
                     notes = %s, is_draft = %s, submitted_at = %s

@@ -78,11 +78,18 @@ class DashboardFunctions:
                     COUNT(*) FILTER (WHERE is_draft = TRUE) AS draft_trips,
                     COALESCE(SUM(advance_payment), 0) AS total_advance,
                     COALESCE(SUM(fuel_nam_phat_vnd), 0) AS total_fuel,
-                    COALESCE(SUM(loading_fee_vnd), 0) AS total_loading,
-                    COALESCE(SUM(pickup_weight_kg), 0) AS total_pickup_kg,
-                    COALESCE(SUM(delivery_weight_kg), 0) AS total_delivery_kg
+                    COALESCE(SUM(loading_fee_vnd), 0) AS total_loading
                 FROM trips{where}
             """, params)
+
+            # Compute weights from stops JSONB
+            rows = Database.query(f"SELECT stops FROM trips{where}", params)
+            total_pickup_kg = 0
+            total_delivery_kg = 0
+            for r in rows:
+                summary = DashboardFunctions._stops_summary(r["stops"])
+                total_pickup_kg += summary["total_pickup_kg"]
+                total_delivery_kg += summary["total_delivery_kg"]
 
             return ResponseHelper.json({
                 "totalTrips": row["total_trips"],
@@ -91,8 +98,8 @@ class DashboardFunctions:
                 "totalAdvance": row["total_advance"],
                 "totalFuel": row["total_fuel"],
                 "totalLoading": row["total_loading"],
-                "totalPickupKg": row["total_pickup_kg"],
-                "totalDeliveryKg": row["total_delivery_kg"],
+                "totalPickupKg": total_pickup_kg,
+                "totalDeliveryKg": total_delivery_kg,
             })
 
         except Exception:
@@ -107,9 +114,7 @@ class DashboardFunctions:
 
             rows = Database.query(f"""
                 SELECT
-                    id, driver_name, advance_payment,
-                    pickup_date, pickup_location, pickup_weight_kg,
-                    delivery_date, delivery_location, delivery_weight_kg,
+                    id, driver_name, advance_payment, stops,
                     fuel_nam_phat_vnd, fuel_hn_liters, loading_fee_vnd,
                     additional_costs, opening_balance, total_cost, closing_balance,
                     notes, is_draft, submitted_at
@@ -121,10 +126,12 @@ class DashboardFunctions:
             for row in rows:
                 additional_total = DashboardFunctions._sum_additional(row["additional_costs"])
                 total_cost = row["fuel_nam_phat_vnd"] + row["loading_fee_vnd"] + additional_total
+                stops_info = DashboardFunctions._stops_summary(row["stops"])
                 trips.append({
                     **{k: v for k, v in row.items()},
                     "additionalTotal": additional_total,
                     "totalCost": total_cost,
+                    **stops_info,
                 })
 
             return ResponseHelper.json({"trips": trips, "count": len(trips)})
@@ -143,6 +150,30 @@ class DashboardFunctions:
         except Exception:
             logger.error(f"Error fetching drivers: {traceback.format_exc()}")
             return ResponseHelper.json({"error": "Internal server error"}, 500)
+
+    @staticmethod
+    def _parse_stops(stops) -> list:
+        """Parse stops JSONB into a list of dicts."""
+        try:
+            items = json.loads(stops) if isinstance(stops, str) else stops
+            if isinstance(items, list):
+                return items
+        except (json.JSONDecodeError, TypeError):
+            pass
+        return []
+
+    @staticmethod
+    def _stops_summary(stops) -> dict:
+        """Compute pickup/delivery locations and weights from stops."""
+        parsed = DashboardFunctions._parse_stops(stops)
+        pickups = [s for s in parsed if s.get("type") == "pickup"]
+        deliveries = [s for s in parsed if s.get("type") == "delivery"]
+        return {
+            "pickup_locations": ", ".join(s.get("location", "") for s in pickups),
+            "delivery_locations": ", ".join(s.get("location", "") for s in deliveries),
+            "total_pickup_kg": sum(s.get("weightKg", 0) for s in pickups),
+            "total_delivery_kg": sum(s.get("weightKg", 0) for s in deliveries),
+        }
 
     @staticmethod
     def _sum_additional(costs) -> int:

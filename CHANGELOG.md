@@ -2,6 +2,18 @@
 
 All notable changes to the NhuTin Trucker API.
 
+## [0.5.0] - 2026-04-01
+
+### Added
+- **Multi-stop trips** — trips now support multiple pickup and delivery locations via a unified `stops` JSONB array. Each stop has seq, type (pickup/delivery), location, date, weight, and GPS.
+- **Backward compatibility shim** — old mobile app versions sending scalar `pickupLocation`/`deliveryLocation` are auto-converted to the stops format.
+- **Dashboard computed fields** — `pickup_locations`, `delivery_locations`, `total_pickup_kg`, `total_delivery_kg` derived from stops for the dashboard.
+
+### Changed
+- Trip CRUD (POST/PUT) now reads/writes `stops` column instead of the 8 scalar pickup/delivery columns.
+- Dashboard summary computes weight totals from stops JSONB in Python.
+- Existing trips are backfilled into the stops format on schema init.
+
 ## [0.4.1] - 2026-03-29
 
 ### Added

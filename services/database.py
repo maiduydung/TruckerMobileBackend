@@ -66,6 +66,34 @@ class Database:
                     cur.execute(f"""
                         ALTER TABLE trips ADD COLUMN IF NOT EXISTS {col} INTEGER DEFAULT 0;
                     """)
+
+                # Multi-stop trips: unified stops JSONB array
+                cur.execute("""
+                    ALTER TABLE trips ADD COLUMN IF NOT EXISTS stops JSONB DEFAULT '[]';
+                """)
+
+                # Backfill: migrate old scalar pickup/delivery into stops array
+                cur.execute("""
+                    UPDATE trips
+                    SET stops = jsonb_build_array(
+                        jsonb_build_object(
+                            'seq', 1, 'type', 'pickup',
+                            'location', COALESCE(pickup_location, ''),
+                            'date', pickup_date,
+                            'weightKg', COALESCE(pickup_weight_kg, 0),
+                            'gps', pickup_gps
+                        ),
+                        jsonb_build_object(
+                            'seq', 2, 'type', 'delivery',
+                            'location', COALESCE(delivery_location, ''),
+                            'date', delivery_date,
+                            'weightKg', COALESCE(delivery_weight_kg, 0),
+                            'gps', delivery_gps
+                        )
+                    )
+                    WHERE (stops IS NULL OR stops = '[]'::jsonb)
+                      AND (pickup_location IS NOT NULL OR delivery_location IS NOT NULL);
+                """)
             conn.commit()
         logger.info("DB schema verified")
 
