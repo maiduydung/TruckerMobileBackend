@@ -43,6 +43,7 @@ A serverless REST API for a Vietnamese trucking SME (Nhu Tin). It records trip d
 - **Edit window:** Trips are editable for 2 days after submission. After that, the PUT endpoint returns 403.
 - **No auth:** Deliberate — 3 trusted drivers, SME context. Friction kills adoption.
 - **Currency:** All monetary values are integers in VND (Vietnamese Dong). No decimals.
+- **Balance is client-calculated:** `closing_balance = opening_balance + advance_payment - (total_cost - fuel_nam_phat_vnd)`. The mobile app computes this and sends it; the backend stores it as-is. No server-side recalculation.
 
 ## API endpoints
 

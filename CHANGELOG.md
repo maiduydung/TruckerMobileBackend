@@ -2,6 +2,11 @@
 
 All notable changes to the NhuTin Trucker API.
 
+## [0.5.1] - 2026-04-01
+
+### Changed
+- **Updated DB schema docs** — added `opening_balance`, `total_cost`, `closing_balance` columns and `stops` JSONB to the README ER diagram. Documented the client-side balance formula: `closing_balance = opening_balance + advance_payment - (total_cost - fuel_nam_phat_vnd)`.
+
 ## [0.5.0] - 2026-04-01
 
 ### Added

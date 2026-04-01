@@ -117,14 +117,10 @@ erDiagram
         uuid id PK "gen_random_uuid()"
         text driver_name "NOT NULL"
         integer advance_payment "DEFAULT 0, VND"
-        timestamptz pickup_date
-        text pickup_location "Code: TPG, HL, KG, etc."
-        integer pickup_weight_kg "DEFAULT 0"
-        jsonb pickup_gps "nullable"
-        timestamptz delivery_date
-        text delivery_location "Code: TBS, LHH, HT, etc."
-        integer delivery_weight_kg "DEFAULT 0"
-        jsonb delivery_gps "nullable"
+        integer opening_balance "DEFAULT 0, VND"
+        integer total_cost "DEFAULT 0, VND"
+        integer closing_balance "DEFAULT 0, VND (client-calculated)"
+        jsonb stops "Multi-stop: seq, type, location, date, weight, GPS"
         integer fuel_nam_phat_vnd "DEFAULT 0"
         integer fuel_hn_liters "DEFAULT 0"
         integer loading_fee_vnd "DEFAULT 0"
@@ -135,6 +131,10 @@ erDiagram
         timestamptz received_at "DEFAULT NOW()"
     }
 ```
+
+**Balance formula (computed client-side):** `closing_balance = opening_balance + advance_payment - (total_cost - fuel_nam_phat_vnd)`
+
+Trips chain: each trip's `opening_balance` is auto-filled from the previous trip's `closing_balance` in the mobile app.
 
 **Location codes** (configured in mobile app):
 - **Pickup:** TPG, HL, KG, DQ, TLLT, TLTB, YP, X
