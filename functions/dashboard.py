@@ -2,6 +2,7 @@
 import datetime
 import json
 import logging
+import time
 import traceback
 
 import azure.functions as func
@@ -60,14 +61,17 @@ class DashboardFunctions:
                 conditions.append("submitted_at >= %s")
                 params.append(cutoff)
             except ValueError:
-                pass
+                logger.warning(f"📊 dashboard — ⚠️ invalid days={days}, ignoring")
 
         where = f" WHERE {' AND '.join(conditions)}" if conditions else ""
+        logger.info(f"📊 dashboard filters — driver={driver or '*'} status={status or '*'} days={days or 'all'}")
         return where, params
 
     @staticmethod
     def _summary(req: func.HttpRequest) -> func.HttpResponse:
         """Handle GET /api/dashboard/summary."""
+        t0 = time.time()
+        logger.info("📊 GET /api/dashboard/summary — fetching")
         try:
             where, params = DashboardFunctions._parse_filters(req)
 
@@ -91,6 +95,9 @@ class DashboardFunctions:
                 total_pickup_kg += summary["total_pickup_kg"]
                 total_delivery_kg += summary["total_delivery_kg"]
 
+            ms = int((time.time() - t0) * 1000)
+            logger.info(f"📊 GET /api/dashboard/summary — ✅ {row['total_trips']} trips "
+                        f"({row['completed_trips']} done, {row['draft_trips']} draft) | {ms}ms")
             return ResponseHelper.json({
                 "totalTrips": row["total_trips"],
                 "completedTrips": row["completed_trips"],
@@ -103,12 +110,14 @@ class DashboardFunctions:
             })
 
         except Exception:
-            logger.error(f"Error fetching dashboard summary: {traceback.format_exc()}")
+            logger.error(f"📊 GET /api/dashboard/summary — 💥 CRASH\n{traceback.format_exc()}")
             return ResponseHelper.json({"error": "Internal server error"}, 500)
 
     @staticmethod
     def _trips(req: func.HttpRequest) -> func.HttpResponse:
         """Handle GET /api/dashboard/trips — full trip list with additional cost totals."""
+        t0 = time.time()
+        logger.info("📊 GET /api/dashboard/trips — fetching")
         try:
             where, params = DashboardFunctions._parse_filters(req)
 
@@ -134,21 +143,28 @@ class DashboardFunctions:
                     **stops_info,
                 })
 
+            ms = int((time.time() - t0) * 1000)
+            logger.info(f"📊 GET /api/dashboard/trips — ✅ {len(trips)} trips returned | {ms}ms")
             return ResponseHelper.json({"trips": trips, "count": len(trips)})
 
         except Exception:
-            logger.error(f"Error fetching dashboard trips: {traceback.format_exc()}")
+            logger.error(f"📊 GET /api/dashboard/trips — 💥 CRASH\n{traceback.format_exc()}")
             return ResponseHelper.json({"error": "Internal server error"}, 500)
 
     @staticmethod
     def _drivers(req: func.HttpRequest) -> func.HttpResponse:
         """Handle GET /api/dashboard/drivers."""
+        t0 = time.time()
+        logger.info("📊 GET /api/dashboard/drivers — fetching")
         try:
             rows = Database.query("SELECT DISTINCT driver_name FROM trips ORDER BY driver_name")
-            return ResponseHelper.json({"drivers": [r["driver_name"] for r in rows]})
+            drivers = [r["driver_name"] for r in rows]
+            ms = int((time.time() - t0) * 1000)
+            logger.info(f"📊 GET /api/dashboard/drivers — ✅ {len(drivers)} drivers: {drivers} | {ms}ms")
+            return ResponseHelper.json({"drivers": drivers})
 
         except Exception:
-            logger.error(f"Error fetching drivers: {traceback.format_exc()}")
+            logger.error(f"📊 GET /api/dashboard/drivers — 💥 CRASH\n{traceback.format_exc()}")
             return ResponseHelper.json({"error": "Internal server error"}, 500)
 
     @staticmethod
@@ -159,7 +175,7 @@ class DashboardFunctions:
             if isinstance(items, list):
                 return items
         except (json.JSONDecodeError, TypeError):
-            pass
+            logger.warning(f"📊 _parse_stops — ⚠️ bad stops data: {type(stops)} {str(stops)[:100]}")
         return []
 
     @staticmethod
@@ -183,7 +199,7 @@ class DashboardFunctions:
             if isinstance(items, list):
                 return sum(c.get("amountVnd", 0) for c in items)
         except (json.JSONDecodeError, TypeError):
-            pass
+            logger.warning(f"📊 _sum_additional — ⚠️ bad costs data: {type(costs)} {str(costs)[:100]}")
         return 0
 
 

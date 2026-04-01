@@ -2,6 +2,7 @@
 import datetime
 import json
 import logging
+import time
 import traceback
 import uuid
 
@@ -95,10 +96,20 @@ class TripFunctions:
     @staticmethod
     def _submit(req: func.HttpRequest) -> func.HttpResponse:
         """Handle POST /api/trips."""
+        t0 = time.time()
+        logger.info("📥 POST /api/trips — new trip incoming")
         try:
             body = req.get_json()
             if not body:
+                logger.warning("📥 POST /api/trips — ❌ empty body")
                 return ResponseHelper.json({"error": "Request body required"}, 400)
+
+            driver = body.get("driverName", "?")
+            is_draft = body.get("isDraft", False)
+            stops = TripFunctions._build_stops(body)
+            logger.info(f"📥 POST /api/trips — driver={driver} draft={is_draft} stops={len(stops)} "
+                        f"advance={body.get('advancePayment', 0)} opening={body.get('openingBalance', 0)} "
+                        f"totalCost={body.get('totalCost', 0)} closing={body.get('closingBalance', 0)}")
 
             trip_id = str(uuid.uuid4())
             params = TripFunctions._extract_trip_params(body)
@@ -112,30 +123,42 @@ class TripFunctions:
                 ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             """, [trip_id, *params])
 
-            logger.info(f"Trip saved: {trip_id} | driver={body.get('driverName')} | isDraft={body.get('isDraft')}")
-            return ResponseHelper.json({"status": "ok", "tripId": trip_id, "isDraft": body.get("isDraft", False)}, 201)
+            ms = int((time.time() - t0) * 1000)
+            logger.info(f"📥 POST /api/trips — ✅ saved {trip_id} | driver={driver} draft={is_draft} | {ms}ms")
+            return ResponseHelper.json({"status": "ok", "tripId": trip_id, "isDraft": is_draft}, 201)
 
-        except json.JSONDecodeError:
+        except json.JSONDecodeError as e:
+            logger.error(f"📥 POST /api/trips — ❌ bad JSON: {e}")
             return ResponseHelper.json({"error": "Invalid JSON"}, 400)
         except Exception:
-            logger.error(f"Error saving trip: {traceback.format_exc()}")
+            logger.error(f"📥 POST /api/trips — 💥 CRASH\n{traceback.format_exc()}")
             return ResponseHelper.json({"error": "Internal server error"}, 500)
 
     @staticmethod
     def _update(req: func.HttpRequest) -> func.HttpResponse:
         """Handle PUT /api/trips/{trip_id}."""
+        t0 = time.time()
+        trip_id = req.route_params.get("trip_id")
+        logger.info(f"✏️ PUT /api/trips/{trip_id} — update incoming")
         try:
-            trip_id = req.route_params.get("trip_id")
             body = req.get_json()
             if not body:
+                logger.warning(f"✏️ PUT /api/trips/{trip_id} — ❌ empty body")
                 return ResponseHelper.json({"error": "Request body required"}, 400)
+
+            driver = body.get("driverName", "?")
+            logger.info(f"✏️ PUT /api/trips/{trip_id} — driver={driver} draft={body.get('isDraft')} "
+                        f"advance={body.get('advancePayment', 0)} closing={body.get('closingBalance', 0)}")
 
             trip = Database.fetch_one("SELECT id, submitted_at FROM trips WHERE id = %s", [trip_id])
             if not trip:
+                logger.warning(f"✏️ PUT /api/trips/{trip_id} — ❌ not found")
                 return ResponseHelper.json({"error": "Trip not found"}, 404)
 
             cutoff = datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(days=EDIT_WINDOW_DAYS)
             if trip["submitted_at"] and trip["submitted_at"] < cutoff:
+                age_days = (datetime.datetime.now(datetime.timezone.utc) - trip["submitted_at"]).days
+                logger.warning(f"✏️ PUT /api/trips/{trip_id} — 🚫 too old ({age_days}d > {EDIT_WINDOW_DAYS}d window)")
                 return ResponseHelper.json({"error": f"Trip is older than {EDIT_WINDOW_DAYS} days and cannot be edited"}, 403)
 
             params = TripFunctions._extract_trip_params(body)
@@ -148,67 +171,75 @@ class TripFunctions:
                 WHERE id = %s
             """, [*params, trip_id])
 
-            logger.info(f"Trip updated: {trip_id} | driver={body.get('driverName')}")
+            ms = int((time.time() - t0) * 1000)
+            logger.info(f"✏️ PUT /api/trips/{trip_id} — ✅ updated | driver={driver} | {ms}ms")
             return ResponseHelper.json({"status": "ok", "tripId": trip_id})
 
-        except json.JSONDecodeError:
+        except json.JSONDecodeError as e:
+            logger.error(f"✏️ PUT /api/trips/{trip_id} — ❌ bad JSON: {e}")
             return ResponseHelper.json({"error": "Invalid JSON"}, 400)
         except Exception:
-            logger.error(f"Error updating trip: {traceback.format_exc()}")
+            logger.error(f"✏️ PUT /api/trips/{trip_id} — 💥 CRASH\n{traceback.format_exc()}")
             return ResponseHelper.json({"error": "Internal server error"}, 500)
 
     @staticmethod
     def _delete(req: func.HttpRequest) -> func.HttpResponse:
         """Handle DELETE /api/trips/{trip_id}."""
+        t0 = time.time()
+        trip_id = req.route_params.get("trip_id")
+        logger.info(f"🗑️ DELETE /api/trips/{trip_id} — delete incoming")
         try:
-            trip_id = req.route_params.get("trip_id")
-
-            trip = Database.fetch_one("SELECT id FROM trips WHERE id = %s", [trip_id])
+            trip = Database.fetch_one("SELECT id, driver_name FROM trips WHERE id = %s", [trip_id])
             if not trip:
+                logger.warning(f"🗑️ DELETE /api/trips/{trip_id} — ❌ not found")
                 return ResponseHelper.json({"error": "Trip not found"}, 404)
 
             Database.execute("DELETE FROM trips WHERE id = %s", [trip_id])
-            logger.info(f"Trip deleted: {trip_id}")
+            ms = int((time.time() - t0) * 1000)
+            logger.info(f"🗑️ DELETE /api/trips/{trip_id} — ✅ deleted | driver={trip['driver_name']} | {ms}ms")
             return ResponseHelper.json({"status": "ok", "tripId": trip_id})
 
         except Exception:
-            logger.error(f"Error deleting trip: {traceback.format_exc()}")
+            logger.error(f"🗑️ DELETE /api/trips/{trip_id} — 💥 CRASH\n{traceback.format_exc()}")
             return ResponseHelper.json({"error": "Internal server error"}, 500)
 
     @staticmethod
     def _list(req: func.HttpRequest) -> func.HttpResponse:
         """Handle GET /api/trips with optional filters."""
+        t0 = time.time()
+        driver = req.params.get("driver", "*")
+        since_days = req.params.get("sinceDays", "all")
+        include_drafts = req.params.get("includeDrafts", "false").lower() == "true"
+        logger.info(f"📋 GET /api/trips — driver={driver} sinceDays={since_days} drafts={include_drafts}")
         try:
-            driver = req.params.get("driver")
-            include_drafts = req.params.get("includeDrafts", "false").lower() == "true"
-            since_days = req.params.get("sinceDays")
-
             conditions, params = [], []
 
             if not include_drafts:
                 conditions.append("is_draft = FALSE")
 
-            if driver:
+            if driver != "*":
                 conditions.append("driver_name = %s")
                 params.append(driver)
 
-            if since_days:
+            if since_days != "all":
                 try:
                     days = int(since_days)
                     cutoff = datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(days=days)
                     conditions.append("submitted_at >= %s")
                     params.append(cutoff)
                 except ValueError:
-                    pass
+                    logger.warning(f"📋 GET /api/trips — ⚠️ invalid sinceDays={since_days}, ignoring")
 
             where = f" WHERE {' AND '.join(conditions)}" if conditions else ""
             query = f"SELECT * FROM trips{where} ORDER BY submitted_at DESC"
             rows = Database.query(query, params)
 
+            ms = int((time.time() - t0) * 1000)
+            logger.info(f"📋 GET /api/trips — ✅ {len(rows)} trips returned | {ms}ms")
             return ResponseHelper.json({"trips": rows, "count": len(rows)})
 
         except Exception:
-            logger.error(f"Error fetching trips: {traceback.format_exc()}")
+            logger.error(f"📋 GET /api/trips — 💥 CRASH\n{traceback.format_exc()}")
             return ResponseHelper.json({"error": "Internal server error"}, 500)
 
 
