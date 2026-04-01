@@ -12,7 +12,7 @@ from services.response import ResponseHelper
 
 logger = logging.getLogger(__name__)
 
-EDIT_WINDOW_DAYS = 2
+EDIT_WINDOW_DAYS = 30
 
 
 class TripFunctions:
@@ -136,7 +136,7 @@ class TripFunctions:
 
             cutoff = datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(days=EDIT_WINDOW_DAYS)
             if trip["submitted_at"] and trip["submitted_at"] < cutoff:
-                return ResponseHelper.json({"error": "Trip is older than 2 days and cannot be edited"}, 403)
+                return ResponseHelper.json({"error": f"Trip is older than {EDIT_WINDOW_DAYS} days and cannot be edited"}, 403)
 
             params = TripFunctions._extract_trip_params(body)
             Database.execute("""
