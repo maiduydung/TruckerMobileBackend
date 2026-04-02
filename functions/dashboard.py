@@ -82,7 +82,8 @@ class DashboardFunctions:
                     COUNT(*) FILTER (WHERE is_draft = TRUE) AS draft_trips,
                     COALESCE(SUM(advance_payment), 0) AS total_advance,
                     COALESCE(SUM(fuel_nam_phat_vnd), 0) AS total_fuel,
-                    COALESCE(SUM(loading_fee_vnd), 0) AS total_loading
+                    COALESCE(SUM(loading_fee_vnd), 0) AS total_loading,
+                    COALESCE(SUM(total_cost), 0) AS total_cost
                 FROM trips{where}
             """, params)
 
@@ -105,6 +106,7 @@ class DashboardFunctions:
                 "totalAdvance": row["total_advance"],
                 "totalFuel": row["total_fuel"],
                 "totalLoading": row["total_loading"],
+                "totalCost": row["total_cost"],
                 "totalPickupKg": total_pickup_kg,
                 "totalDeliveryKg": total_delivery_kg,
             })

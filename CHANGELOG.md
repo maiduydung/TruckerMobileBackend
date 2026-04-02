@@ -2,6 +2,11 @@
 
 All notable changes to the NhuTin Trucker API.
 
+## [0.5.2] - 2026-04-02
+
+### Fixed
+- **Dashboard summary `totalCost`** — added `SUM(total_cost)` to the summary endpoint so "Tổng chi phí" reflects the actual total cost (fuel + loading + additional costs) instead of only fuel + loading.
+
 ## [0.5.1] - 2026-04-01
 
 ### Changed
