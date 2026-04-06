@@ -29,6 +29,14 @@ PG_USER = get_config("PG_USER")
 PG_PASSWORD = get_config("PG_PASSWORD")
 PG_SSLMODE = get_config("PG_SSLMODE", "require")
 
+# Alerts
+LOW_BALANCE_THRESHOLD = int(get_config("LOW_BALANCE_THRESHOLD", "500000"))
+ALERT_RECIPIENTS = get_config("ALERT_RECIPIENTS", "")  # comma-separated emails
+
+# Gmail SMTP (app password)
+GMAIL_ADDRESS = get_config("GMAIL_ADDRESS", "")
+GMAIL_APP_PASSWORD = get_config("GMAIL_APP_PASSWORD", "")
+
 
 def main():
     """Verify config loads correctly."""
@@ -38,6 +46,10 @@ def main():
     print(f"PG_USER: {PG_USER}")
     print(f"PG_SSLMODE: {PG_SSLMODE}")
     print(f"PG_PASSWORD: {'***' if PG_PASSWORD else 'NOT SET'}")
+    print(f"LOW_BALANCE_THRESHOLD: {LOW_BALANCE_THRESHOLD}")
+    print(f"ALERT_RECIPIENTS: {ALERT_RECIPIENTS or 'NOT SET'}")
+    print(f"GMAIL_ADDRESS: {GMAIL_ADDRESS or 'NOT SET'}")
+    print(f"GMAIL_APP_PASSWORD: {'***' if GMAIL_APP_PASSWORD else 'NOT SET'}")
 
 
 if __name__ == "__main__":

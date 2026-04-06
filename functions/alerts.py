@@ -1,0 +1,158 @@
+"""Balance alert endpoints — checks trucker closing balances and sends email alerts."""
+import logging
+import time
+import traceback
+
+import azure.functions as func
+
+from config import LOW_BALANCE_THRESHOLD
+from services.database import Database
+from services.email import EmailSender
+from services.response import ResponseHelper
+
+logger = logging.getLogger(__name__)
+
+
+class AlertFunctions:
+    """Registers alert-related HTTP endpoints."""
+
+    @staticmethod
+    def register(app: func.FunctionApp):
+        """Bind alert routes to the function app."""
+
+        @app.function_name(name="check_balances")
+        @app.route(route="alerts/check-balances", methods=["GET"],
+                   auth_level=func.AuthLevel.FUNCTION)
+        def check_balances(req: func.HttpRequest) -> func.HttpResponse:
+            """Check trucker balances and send alert if any are low."""
+            return AlertFunctions._check_balances(req)
+
+    @staticmethod
+    def _get_low_balance_drivers() -> list[dict]:
+        """Find drivers whose latest trip has closing_balance below threshold.
+
+        For each driver, picks the most recent completed trip's closing balance.
+        """
+        rows = Database.query("""
+            SELECT DISTINCT ON (driver_name)
+                driver_name,
+                closing_balance,
+                submitted_at
+            FROM trips
+            WHERE is_draft = FALSE
+            ORDER BY driver_name, submitted_at DESC
+        """)
+        return [
+            {
+                "driver": r["driver_name"],
+                "balance": r["closing_balance"],
+                "last_trip": r["submitted_at"],
+            }
+            for r in rows
+            if r["closing_balance"] < LOW_BALANCE_THRESHOLD
+        ]
+
+    @staticmethod
+    def _build_alert_email(drivers: list[dict]) -> str:
+        """Build HTML email body for low-balance alert."""
+        def fmt_vnd(amount: int) -> str:
+            """Format VND amount with thousand separators."""
+            return f"{amount:,}".replace(",", ".")
+
+        rows_html = ""
+        for d in drivers:
+            color = "#ef4444" if d["balance"] < 0 else "#d97706"
+            rows_html += (
+                f"<tr>"
+                f"<td style='padding:10px 16px;border-bottom:1px solid #e5e7eb;'>"
+                f"<strong>{d['driver']}</strong></td>"
+                f"<td style='padding:10px 16px;border-bottom:1px solid #e5e7eb;"
+                f"text-align:right;color:{color};font-weight:700;'>"
+                f"{fmt_vnd(d['balance'])}d</td>"
+                f"</tr>"
+            )
+
+        return f"""
+        <div style="font-family:'Segoe UI',Arial,sans-serif;max-width:500px;margin:0 auto;">
+            <div style="background:#1273FF;color:white;padding:20px 24px;border-radius:12px 12px 0 0;">
+                <h2 style="margin:0;font-size:18px;">Pathfinder Trucker Alert</h2>
+                <p style="margin:6px 0 0;opacity:0.85;font-size:13px;">
+                    Can ung them cho tai xe</p>
+            </div>
+            <div style="background:white;border:1px solid #e5e7eb;border-top:none;
+                        border-radius:0 0 12px 12px;overflow:hidden;">
+                <table style="width:100%;border-collapse:collapse;font-size:14px;">
+                    <thead>
+                        <tr style="background:#f9fafb;">
+                            <th style="padding:10px 16px;text-align:left;font-size:12px;
+                                       color:#6b7280;text-transform:uppercase;">Tai xe</th>
+                            <th style="padding:10px 16px;text-align:right;font-size:12px;
+                                       color:#6b7280;text-transform:uppercase;">Du cuoi</th>
+                        </tr>
+                    </thead>
+                    <tbody>{rows_html}</tbody>
+                </table>
+                <div style="padding:16px 16px;background:#fffbeb;border-top:1px solid #fbbf24;
+                            font-size:12px;color:#92400e;">
+                    Nguong canh bao: {fmt_vnd(LOW_BALANCE_THRESHOLD)}d
+                </div>
+            </div>
+        </div>
+        """
+
+    @staticmethod
+    def _check_balances(req: func.HttpRequest) -> func.HttpResponse:
+        """Handle GET /api/alerts/check-balances."""
+        t0 = time.time()
+        logger.info(f"🔔 GET /api/alerts/check-balances — threshold={LOW_BALANCE_THRESHOLD:,}")
+        try:
+            drivers = AlertFunctions._get_low_balance_drivers()
+            ms = int((time.time() - t0) * 1000)
+
+            if not drivers:
+                logger.info(f"🔔 check-balances — ✅ all drivers OK | {ms}ms")
+                return ResponseHelper.json({
+                    "status": "ok",
+                    "message": "All drivers above threshold",
+                    "threshold": LOW_BALANCE_THRESHOLD,
+                    "alerted": [],
+                })
+
+            logger.warning(f"🔔 check-balances — ⚠️ {len(drivers)} driver(s) below "
+                           f"{LOW_BALANCE_THRESHOLD:,}: "
+                           f"{[d['driver'] for d in drivers]}")
+
+            email_sent = EmailSender.send(
+                subject=f"[Pathfinder] {len(drivers)} tai xe can ung them",
+                html_body=AlertFunctions._build_alert_email(drivers),
+            )
+
+            ms = int((time.time() - t0) * 1000)
+            logger.info(f"🔔 check-balances — ✅ done | email={'sent' if email_sent else 'skipped'} "
+                        f"| {ms}ms")
+
+            return ResponseHelper.json({
+                "status": "alert",
+                "threshold": LOW_BALANCE_THRESHOLD,
+                "alerted": drivers,
+                "emailSent": email_sent,
+            })
+
+        except Exception:
+            logger.error(f"🔔 check-balances — 💥 CRASH\n{traceback.format_exc()}")
+            return ResponseHelper.json({"error": "Internal server error"}, 500)
+
+
+def main():
+    """Test balance check locally."""
+    drivers = AlertFunctions._get_low_balance_drivers()
+    if drivers:
+        print(f"Low balance drivers ({LOW_BALANCE_THRESHOLD:,} threshold):")
+        for d in drivers:
+            print(f"  {d['driver']}: {d['balance']:,}d")
+    else:
+        print("All drivers above threshold")
+
+
+if __name__ == "__main__":
+    main()

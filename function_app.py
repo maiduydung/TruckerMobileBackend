@@ -8,6 +8,7 @@ from services.database import cold_start
 from functions.trips import TripFunctions
 from functions.dashboard import DashboardFunctions
 from functions.health import HealthFunctions
+from functions.alerts import AlertFunctions
 
 # ── Cold start ────────────────────────────────────────────────────────────
 cold_start()
@@ -18,3 +19,4 @@ app = func.FunctionApp()
 TripFunctions.register(app)
 DashboardFunctions.register(app)
 HealthFunctions.register(app)
+AlertFunctions.register(app)
