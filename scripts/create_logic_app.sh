@@ -10,7 +10,7 @@
 # Schedule: 06:00, 09:00, 12:00, 15:00, 18:00 (UTC+7 = Asia/Ho_Chi_Minh)
 set -euo pipefail
 
-RESOURCE_GROUP="nhutin-trucker-rg"
+RESOURCE_GROUP="nhutin-prod"
 LOCATION="southeastasia"
 LOGIC_APP_NAME="nhutin-balance-alert"
 FUNCTION_APP_URL="https://nhutin-trucker-api.azurewebsites.net/api/alerts/check-balances"
