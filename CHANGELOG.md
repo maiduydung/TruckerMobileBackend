@@ -2,6 +2,20 @@
 
 All notable changes to the NhuTin Trucker API.
 
+## [0.6.0] - 2026-04-06
+
+### Added
+- **Low-balance alert endpoint** — `GET /api/alerts/check-balances` checks each driver's latest closing balance against a configurable threshold (default 500,000 VND). Returns list of drivers below threshold and sends email alert.
+- **Gmail email service** (`services/email.py`) — sends HTML alert emails via Gmail SMTP using app passwords. Supports multiple recipients via `ALERT_RECIPIENTS` config.
+- **Azure Logic App** (`nhutin-balance-alert`) — triggers the balance check 5 times daily at 06:00, 09:00, 12:00, 15:00, 18:00 Vietnam time.
+- **Creation script** (`scripts/create_logic_app.sh`) — deploys the Logic App to Azure.
+
+### Configuration
+- `LOW_BALANCE_THRESHOLD` — balance threshold in VND (default: 500,000)
+- `GMAIL_ADDRESS` — sender Gmail address
+- `GMAIL_APP_PASSWORD` — Google app password for SMTP auth
+- `ALERT_RECIPIENTS` — comma-separated recipient emails
+
 ## [0.5.2] - 2026-04-02
 
 ### Fixed
