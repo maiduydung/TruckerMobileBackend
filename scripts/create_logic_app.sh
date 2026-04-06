@@ -1,19 +1,22 @@
 #!/bin/bash
-# Create Azure Logic App to check trucker balances 5 times a day.
+# Create/update Azure Logic App to check trucker balances AND contract completion 5 times a day.
 # Usage: ./scripts/create_logic_app.sh
 #
 # Prerequisites:
 #   - az login (Azure CLI authenticated)
-#   - Function app "nhutin-trucker-api" deployed with the alerts endpoint
+#   - Function app "nhutin-trucker-api" deployed with the alerts endpoints
 #
-# The Logic App calls GET /api/alerts/check-balances every ~5 hours.
+# The Logic App calls both:
+#   - GET /api/alerts/check-balances   (low trucker balance → email)
+#   - GET /api/alerts/check-contracts  (contract ≥90% complete → email)
+#
 # Schedule: 06:00, 09:00, 12:00, 15:00, 18:00 (UTC+7 = Asia/Ho_Chi_Minh)
 set -euo pipefail
 
 RESOURCE_GROUP="nhutin-prod"
 LOCATION="southeastasia"
 LOGIC_APP_NAME="nhutin-balance-alert"
-FUNCTION_APP_URL="https://nhutin-trucker-api.azurewebsites.net/api/alerts/check-balances"
+BASE_URL="https://nhutin-trucker-api.azurewebsites.net/api/alerts"
 
 # ── Function key for auth ───────────────────────────────────────────────
 echo "=== Fetching function key ==="
@@ -25,16 +28,17 @@ FUNCTION_KEY=$(az functionapp keys list \
 if [ -z "$FUNCTION_KEY" ]; then
   echo "WARNING: Could not auto-fetch function key."
   echo "You can set it manually after creation in the Logic App designer."
-  echo "The key from the user: pass it via Azure portal or set FUNCTION_KEY env var."
-  CALL_URL="$FUNCTION_APP_URL"
+  BALANCE_URL="${BASE_URL}/check-balances"
+  CONTRACT_URL="${BASE_URL}/check-contracts"
 else
-  CALL_URL="${FUNCTION_APP_URL}?code=${FUNCTION_KEY}"
+  BALANCE_URL="${BASE_URL}/check-balances?code=${FUNCTION_KEY}"
+  CONTRACT_URL="${BASE_URL}/check-contracts?code=${FUNCTION_KEY}"
 fi
 
 echo ""
 echo "=== Creating Logic App: $LOGIC_APP_NAME ==="
 
-# Logic App workflow definition — recurrence trigger + HTTP action
+# Logic App workflow definition — recurrence trigger + two HTTP actions (parallel)
 DEFINITION=$(cat <<'DEFEOF'
 {
   "definition": {
@@ -58,7 +62,18 @@ DEFINITION=$(cat <<'DEFEOF'
         "type": "Http",
         "inputs": {
           "method": "GET",
-          "uri": "PLACEHOLDER_URL",
+          "uri": "PLACEHOLDER_BALANCE_URL",
+          "headers": {
+            "Accept": "application/json"
+          }
+        },
+        "runAfter": {}
+      },
+      "Check_Contracts": {
+        "type": "Http",
+        "inputs": {
+          "method": "GET",
+          "uri": "PLACEHOLDER_CONTRACT_URL",
           "headers": {
             "Accept": "application/json"
           }
@@ -73,11 +88,12 @@ DEFINITION=$(cat <<'DEFEOF'
 DEFEOF
 )
 
-# Inject the actual URL into the definition
-DEFINITION=$(echo "$DEFINITION" | sed "s|PLACEHOLDER_URL|${CALL_URL}|g")
+# Inject the actual URLs into the definition
+DEFINITION=$(echo "$DEFINITION" | sed "s|PLACEHOLDER_BALANCE_URL|${BALANCE_URL}|g")
+DEFINITION=$(echo "$DEFINITION" | sed "s|PLACEHOLDER_CONTRACT_URL|${CONTRACT_URL}|g")
 
 # Write temp file (Logic App CLI needs a file path)
-TMPFILE=$(mktemp /tmp/logic-app-def.XXXXXX.json)
+TMPFILE=$(mktemp /tmp/logic-app-def-XXXXXX.json)
 echo "$DEFINITION" > "$TMPFILE"
 
 az logic workflow create \
@@ -94,22 +110,15 @@ echo ""
 echo "=== Logic App created ==="
 echo "Name: $LOGIC_APP_NAME"
 echo "Schedule: 06:00, 09:00, 12:00, 15:00, 18:00 (Vietnam time)"
-echo "Endpoint: $FUNCTION_APP_URL"
+echo "Actions:"
+echo "  1. Check_Balances  → ${BASE_URL}/check-balances"
+echo "  2. Check_Contracts → ${BASE_URL}/check-contracts"
 echo ""
-echo "=== Next steps ==="
-echo "1. Set these env vars on the function app (nhutin-trucker-api):"
-echo "   GMAIL_ADDRESS         = your Gmail address"
-echo "   GMAIL_APP_PASSWORD    = your Google app password"
-echo "   ALERT_RECIPIENTS      = comma-separated emails (you + client)"
-echo "   LOW_BALANCE_THRESHOLD = 500000 (default, already set in code)"
+echo "Both actions run in parallel on each trigger."
 echo ""
-echo "   az functionapp config appsettings set \\"
-echo "     --name nhutin-trucker-api \\"
-echo "     --resource-group $RESOURCE_GROUP \\"
-echo "     --settings \\"
-echo "       GMAIL_ADDRESS=your@gmail.com \\"
-echo "       GMAIL_APP_PASSWORD=xxxx-xxxx-xxxx-xxxx \\"
-echo "       ALERT_RECIPIENTS=you@gmail.com,client@gmail.com"
-echo ""
-echo "2. Deploy the function app (push to main branch for GitHub Actions)"
-echo "3. Test: curl '${CALL_URL}'"
+echo "=== Configuration ==="
+echo "  LOW_BALANCE_THRESHOLD    = 500000 VND (default)"
+echo "  CONTRACT_ALERT_THRESHOLD = 90% (default)"
+echo "  GMAIL_ADDRESS            = sender Gmail"
+echo "  GMAIL_APP_PASSWORD       = Google app password"
+echo "  ALERT_RECIPIENTS         = comma-separated emails"
