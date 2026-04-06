@@ -31,6 +31,7 @@ PG_SSLMODE = get_config("PG_SSLMODE", "require")
 
 # Alerts
 LOW_BALANCE_THRESHOLD = int(get_config("LOW_BALANCE_THRESHOLD", "500000"))
+CONTRACT_ALERT_THRESHOLD = int(get_config("CONTRACT_ALERT_THRESHOLD", "90"))
 ALERT_RECIPIENTS = get_config("ALERT_RECIPIENTS", "")  # comma-separated emails
 
 # Gmail SMTP (app password)

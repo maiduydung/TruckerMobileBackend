@@ -2,6 +2,21 @@
 
 All notable changes to the NhuTin Trucker API.
 
+## [0.7.0] - 2026-04-06
+
+### Added
+- **Shipment contract CRUD** (`functions/contracts.py`) — `POST/GET/PUT/DELETE /api/contracts` for creating and managing shipment contracts with target tonnage, price/kg, and date range.
+- **Auto-matching trip-to-contract** — `GET /api/contracts` computes `deliveredWeightKg` via a PostgreSQL lateral join that matches trips where any stop (pickup OR delivery) location matches the contract subject, within the contract date range. Only delivery weights are summed.
+- **Computed fields** — each contract response includes `completionPct`, `remainingKg`, `contractValueVnd`, `daysLeft`, and `alerting` (true when ≥90% complete).
+- **Contract alert endpoint** — `GET /api/alerts/check-contracts` finds active contracts at or above the alert threshold (default 90%) and sends an HTML email via Gmail SMTP. Purple-themed email template matching the existing balance alert style.
+- **`contracts` table** — added to `init_db()` in `services/database.py` with columns: `id`, `name`, `subject`, `target_weight_kg`, `price_per_kg`, `start_date`, `end_date`, `status`, `notes`, `created_at`, `updated_at`.
+
+### Configuration
+- `CONTRACT_ALERT_THRESHOLD` — completion percentage at which to fire contract alerts (default: `90`)
+
+### Database
+- New `contracts` table auto-created on cold start alongside `trips`
+
 ## [0.6.0] - 2026-04-06
 
 ### Added

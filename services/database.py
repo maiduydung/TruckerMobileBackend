@@ -81,6 +81,23 @@ class Database:
                 """)
 
                 # Backfill: migrate old scalar pickup/delivery into stops array
+                # ── Contracts table ──────────────────────────────
+                cur.execute("""
+                    CREATE TABLE IF NOT EXISTS contracts (
+                        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                        name TEXT NOT NULL,
+                        subject TEXT NOT NULL,
+                        target_weight_kg INTEGER NOT NULL,
+                        price_per_kg INTEGER DEFAULT 0,
+                        start_date DATE NOT NULL,
+                        end_date DATE NOT NULL,
+                        status TEXT DEFAULT 'active',
+                        notes TEXT DEFAULT '',
+                        created_at TIMESTAMPTZ DEFAULT NOW(),
+                        updated_at TIMESTAMPTZ DEFAULT NOW()
+                    );
+                """)
+
                 cur.execute("""
                     UPDATE trips
                     SET stops = jsonb_build_array(

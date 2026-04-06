@@ -9,6 +9,7 @@ from functions.trips import TripFunctions
 from functions.dashboard import DashboardFunctions
 from functions.health import HealthFunctions
 from functions.alerts import AlertFunctions
+from functions.contracts import ContractFunctions
 
 # ── Cold start ────────────────────────────────────────────────────────────
 cold_start()
@@ -20,3 +21,4 @@ TripFunctions.register(app)
 DashboardFunctions.register(app)
 HealthFunctions.register(app)
 AlertFunctions.register(app)
+ContractFunctions.register(app)
