@@ -2,6 +2,12 @@
 
 All notable changes to the NhuTin Trucker API.
 
+## [0.8.0] - 2026-04-15
+
+### Added
+- **`GET /api/dashboard/locations`** — returns distinct pickup and delivery locations exploded from the `stops` JSONB column (`jsonb_array_elements`). Backs the dashboard's location filter so the dropdown shows every location ever shipped to/from, not just those in the active date window.
+- **`received_at`** in the `/api/dashboard/trips` response — backend already stored server-receipt timestamp alongside the driver-reported `submitted_at`; now exposed so the dashboard can show "Ngày nhận" next to "Ngày gửi".
+
 ## [0.7.0] - 2026-04-06
 
 ### Added

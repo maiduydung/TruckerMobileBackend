@@ -83,6 +83,7 @@ flowchart TD
 | `GET` | `/api/dashboard/summary` | Aggregate stats (total trips, revenue, costs) | `200`, `500` |
 | `GET` | `/api/dashboard/trips` | Trip data for dashboard tables/charts | `200`, `500` |
 | `GET` | `/api/dashboard/drivers` | Distinct driver names | `200`, `500` |
+| `GET` | `/api/dashboard/locations` | Distinct pickup/delivery locations exploded from `stops` JSONB | `200`, `500` |
 | `POST` | `/api/contracts` | Create a shipment contract | `201`, `400`, `500` |
 | `GET` | `/api/contracts` | List contracts with auto-computed delivery progress | `200`, `500` |
 | `PUT` | `/api/contracts/{id}` | Update a contract | `200`, `400`, `404`, `500` |
