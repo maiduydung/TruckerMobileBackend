@@ -32,6 +32,12 @@ class DashboardFunctions:
             """Filtered trip list with computed fields for the dashboard."""
             return DashboardFunctions._trips(req)
 
+        @app.function_name(name="dashboard_locations")
+        @app.route(route="dashboard/locations", methods=["GET"], auth_level=func.AuthLevel.ANONYMOUS)
+        def dashboard_locations(req: func.HttpRequest) -> func.HttpResponse:
+            del req
+            return DashboardFunctions._locations()
+
         @app.function_name(name="dashboard_drivers")
         @app.route(route="dashboard/drivers", methods=["GET"], auth_level=func.AuthLevel.ANONYMOUS)
         def dashboard_drivers(req: func.HttpRequest) -> func.HttpResponse:
@@ -151,6 +157,32 @@ class DashboardFunctions:
 
         except Exception:
             logger.error(f"📊 GET /api/dashboard/trips — 💥 CRASH\n{traceback.format_exc()}")
+            return ResponseHelper.json({"error": "Internal server error"}, 500)
+
+    @staticmethod
+    def _locations() -> func.HttpResponse:
+        """Handle GET /api/dashboard/locations — all unique pickup/delivery locations."""
+        t0 = time.time()
+        logger.info("📊 GET /api/dashboard/locations — fetching")
+        try:
+            rows = Database.query("""
+                SELECT DISTINCT
+                    stop->>'type'     AS type,
+                    stop->>'location' AS location
+                FROM trips,
+                     jsonb_array_elements(stops::jsonb) AS stop
+                WHERE stop->>'type' IN ('pickup', 'delivery')
+                  AND COALESCE(stop->>'location', '') <> ''
+                ORDER BY type, location
+            """)
+            pickups = sorted({r["location"] for r in rows if r["type"] == "pickup"})
+            deliveries = sorted({r["location"] for r in rows if r["type"] == "delivery"})
+            ms = int((time.time() - t0) * 1000)
+            logger.info(f"📊 GET /api/dashboard/locations — ✅ {len(pickups)} pickups, {len(deliveries)} deliveries | {ms}ms")
+            return ResponseHelper.json({"pickups": pickups, "deliveries": deliveries})
+
+        except Exception:
+            logger.error(f"📊 GET /api/dashboard/locations — 💥 CRASH\n{traceback.format_exc()}")
             return ResponseHelper.json({"error": "Internal server error"}, 500)
 
     @staticmethod
